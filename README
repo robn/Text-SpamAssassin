@@ -1,0 +1,45 @@
+Text/SpamAssassin version 1.3
+==============================
+
+Text::SpamAssassin - Detects spamminess of arbitrary text, suitable
+for wiki and blog defense.
+
+Text::SpamAssassin accepts textual content and metadata (comment
+title, poster's name, email address, url, and IP address), and
+produces a RFC822-formatted mail message for analysis with
+Mail::SpamAssassin. Additionally, new rule­ sets and user
+preferences can be passed to Mail::SpamAs­ sassin to adjust the
+rules and scores applied to the mail message, since certain tests
+bear no relevance to comment spam (e.g. DUL network tests, Bayesian
+classifier.)
+
+Results include verdict (OK or SUSPICIOUS), note (shows whether
+tests completed successfully), score, and rules (the list of rules
+hit.)
+
+See ./contrib for proof-of-concept PHP code and its counterpart, the
+standalone script 'babycart'.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  Mail::SpamAssassin
+  POSIX
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2004 Bob Apthorpe
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+

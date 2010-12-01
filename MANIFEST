@@ -1,0 +1,13 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+INSTALL
+contrib/babycart
+contrib/comment_tester.php
+contrib/testme.pl
+comment_spam_prefs.cf
+SpamAssassin.pm
+test_spam.txt
+t/1.t
+META.yml                                 Module meta-data (added by MakeMaker)
