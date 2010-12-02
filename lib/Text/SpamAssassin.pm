@@ -109,7 +109,6 @@ sub analyze {
     if (! $status) {
         return {
             verdict => 'UNKNOWN',
-            note    => 'analysis failed',
             score   => 0,
             rules   => '',
         };
@@ -117,7 +116,6 @@ sub analyze {
 
     my $result = {
         verdict => $status->is_spam ? 'SUSPICIOUS' : 'OK',
-        note    => 'analyzed',                              # XXX add version, timing
         score   => $status->get_hits,
         rules   => $status->get_names_of_tests_hit,
     };
