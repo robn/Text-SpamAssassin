@@ -9,6 +9,7 @@ use Mail::Address;
 use Mail::Header;
 use Mail::Internet;
 use POSIX qw(strftime);
+use Data::Random qw(rand_chars);
 
 BEGIN {
     if ($Mail::SpamAssassin::VERSION < 3) {
@@ -19,346 +20,205 @@ BEGIN {
 sub new {
     my ($class, %opts) = @_;
 
-    my $self = bless {
-        text               => [],
-        spamassassin_prefs => {},
-    }, $class;
+    my $self = bless {}, $class;
+    $self->reset;
 
-    $self->_reset_header;
-    $self->_reset_metadata;
-    $self->_reset_response;
+    $self->{analyzer} = Mail::SpamAssassin->new(%opts);
+    $self->{analyzer}->compile_now;
 
-    # process %opts and fill in option, text, and metadata structs
+    return $self;
+}
 
-    if (exists $opts{data} || exists $opts{text}) {
-        $self->set_text(exists $opts{data} ? $opts{data} : $opts{text});
+sub reset {
+    my ($self) = @_;
+
+    $self->reset_metadata;
+    $self->reset_headers;
+
+    return $self;
+}
+
+sub reset_metadata {
+    my ($self) = @_;
+
+    $self->{metadata} = {};
+
+    return $self;
+}
+
+sub reset_headers {
+    my ($self) = @_;
+
+    $self->{header} = {};
+
+    return $self;
+}
+
+sub set_metadata {
+    my ($self, $key, $value) = @_;
+
+    if (defined $value) {
+        $self->{metadata}{lc $key} = $value;
+    }
+    else {
+        delete $self->{metadata}{lc $key};
     }
 
-    foreach my $kk (keys %opts) {
-        next if ($kk eq 'data');
+    return $self;
+}
 
-        if ($kk eq 'spamassassin_prefs') {
-            if (ref $opts{$kk} eq 'HASH') {
-                foreach my $okk (keys %{$opts{$kk}}) {
-                    $self->set_spamassassin_prefs($okk, $opts{$kk}{$okk});
-                }
-            }
-            next;
-        }
+sub set_header {
+    my ($self, $key, $value) = @_;
 
-        # treat all stray keys (not text, data, or option) as metadata
-        $self->set_metadata($kk, $opts{$kk});
+    $value = [ $value ] if not ref $value;
+
+    if (defined $value) {
+        $self->{header}{lc $key} = $value;
+    }
+    else {
+        delete $self->{header}{lc $key};
     }
 
-    # Make a M::SA object; point to custom configs
-    $self->{'_analyzer'} = Mail::SpamAssassin->new($self->{'spamassassin_prefs'});
+    return $self;
+}
+
+sub set_text {
+    my ($self, $text) = @_;
+
+    $self->{text} = $text;
+    delete $self->{html};
+
+    return $self;
+}
+
+sub set_html {
+    my ($self, $html) = @_;
+
+    $self->{html} = $html;
+    delete $self->{text};
 
     return $self;
 }
 
 sub analyze {
-    my $self = shift;
-
-    # wipe response
-    $self->_reset_response;
-
-    $self->_create_rfc822_message;
-
-    # Get verdict, score, list of rules
-    my $status = $self->{'_analyzer'}->check($self->{'_mail'});
-
-    $self->{'response'}{'note'} ||= 'ANALYSIS REALLY FAILED';
-
-    if ($status) {
-        $self->{'response'}{'verdict'} =
-            ($status->is_spam()) ? "SUSPICIOUS" : "OK";
-        $self->{'response'}{'note'} = 'ANALYZED';  # add version number, timing?
-        $self->{'response'}{'score'} = $status->get_hits();
-        $self->{'response'}{'rules'} = $status->get_names_of_tests_hit();
-        $status->finish();
-    }
-
-    # Handle missing return values...
-    $self->{'response'}{'verdict'} ||= 'OK';
-    $self->{'response'}{'note'}    ||= 'ANALYSIS REALLY FAILED';
-    $self->{'response'}{'score'}   ||= 0;
-    $self->{'response'}{'rules'}   ||= '';
-
-    return $self->{'response'};
-}
-
-sub get_text {
-    my ($self) = @_;
-    return join('', @{$self->{'text'}});
-}
-
-sub set_text {
-    my ($self, $data) = @_;
-
-    if (ref $data eq 'ARRAY') {
-        $self->{'text'} = $data;
-    } elsif (ref $data eq 'GLOB') {
-        if (defined fileno $data) {
-            $self->{'text'} = [<$data>];
-        }
-    } elsif (ref $data eq 'SCALAR') {
-        $self->{'text'} = [${$data}];
-    } else {
-        $self->{'text'} = [$data];
-    }
-
-    return;
-}
-
-sub get_spamassassin_prefs {
-    my $self = shift;
-    my $kk   = shift;
-
-    return $self->_get_internals('spamassassin_prefs', $kk);
-}
-
-sub set_spamassassin_prefs {
-    my $self = shift;
-    my $kk   = shift;
-    my $vv   = shift;
-
-    return $self->_set_internals('spamassassin_prefs', $kk, $vv);
-}
-
-sub get_metadata {
-    my $self = shift;
-    my $kk   = shift;
-
-    return $self->_get_internals('metadata', $kk);
-}
-
-sub set_metadata {
-    my $self = shift;
-    my $kk   = shift;
-    my $vv   = shift;
-
-    return $self->_set_internals('metadata', $kk, $vv);
-}
-
-sub get_response {
-    my $self = shift;
-    my $kk   = shift;
-
-    return $self->_get_internals('response', $kk);
-}
-
-sub _get_internals {
-    my $self = shift;
-    my $ikk  = shift;
-    my $kk   = shift;
-
-    my $retval;
-
-    if ($kk) {
-        $retval = $self->{$ikk}{$kk}
-          if (exists($self->{$ikk}{$kk}));
-    } else {
-        $retval = $self->{$ikk};
-    }
-
-    return $retval;
-}
-
-sub _set_internals {
-    my $self = shift;
-    my $ikk  = shift;
-    my $kk   = shift;
-    my $vv   = shift;
-
-    $self->{$ikk}{$kk} = $vv;
-
-    return;
-}
-
-sub _reset_header {
     my ($self) = @_;
 
-    # preload header defaults
-    # These go into building Message-Id, Received, To, and From
-    $self->{header} = {
-        sender_ip      => '127.0.0.1',
-        sender_name    => 'Anonymous Coward',
-        sender_address => 'nobody@example.com',
-        sender_host    => 'blog.example.com',
+    my $msg = $self->_generate_message;
 
-        recipient_host        => 'localhost',
-        recipient_mta_version => '(Postfix)',
-        recipient_addres      => 'blog@example.com',
+    my $status = $self->{analyzer}->check($msg);
+    if (! $status) {
+        return {
+            verdict => 'UNKNOWN',
+            note    => 'analysis failed',
+            score   => 0,
+            rules   => '',
+        };
+    }
 
-        Subject                     => 'Eponymous',
-        'MIME-Version'              => '1.0',
-        'Content-Type'              => 'text/html, charset="us-ascii"',
-        'Content-Transfer-Encoding' => '8bit',
+    my $result = {
+        verdict => $status->is_spam ? 'SUSPICIOUS' : 'OK',
+        note    => 'analyzed',                              # XXX add version, timing
+        score   => $status->get_hits,
+        rules   => $status->get_names_of_tests_hit,
     };
+
+    $status->finish;
+
+    return $result;
 }
 
-sub _reset_metadata {
+sub _generate_header {
     my ($self) = @_;
 
-    # preload metadata
-    $self->{metadata} = {
-        author  => 'Anonymous Coward',
-        email   => 'sender@example.com',
-        ip      => '127.0.0.1',
-        subject => 'Eponymous',
-        url     => undef,
-    };
-}
+    my $h = Mail::Header->new;
 
-sub _reset_response {
-    my ($self) = @_;
-
-    # preload response
-    $self->{response} = {
-        verdict => 'OK',
-        note    => 'NOT ANALYZED',
-        rules   => '',
-        score   => 0,
-    };
-}
-
-sub _rndhex {
-    my $self   = shift;
-    my $length = shift || 0;
-    my $retval = '';
-    while ($length-- > 0) {
-        $retval .= sprintf('%X', int(rand(16)));
+    for my $key ( keys %{$self->{headers}} ) {
+        $h->add($key, $_) for @{$self->{headers}{$key}};
     }
-    return $retval;
+
+    my $set = sub {
+        my ($key, $value) = @_;
+        $h->get($key) or $h->add($key, $value);
+    };
+
+    $set->('To' => q{blog@example.com});
+    $set->('From' => Mail::Address->new(
+        $self->{metadata}{author} || q{Anonymous Coward},
+        $self->{metadata}{email}  || q{nobody@example.com},
+    )->format);
+    $set->('Subject' => $self->{metadata}{subject} || q{Eponymous});
+
+    $set->('Date' => strftime("%a, %d %b %Y %H:%M:%S %z", localtime));
+
+    $set->('Received' => sprintf (
+        q{from %s ([%s]) by localhost (Postfix) with SMTP id %s for <blog@example.com>; %s},
+        $self->{metadata}{ip} || q{127.0.0.1},
+        $self->{metadata}{ip} || q{127.0.0.1},
+        (join '', rand_chars(set => 'alphanumeric', size => 10)),
+        strftime("%a, %d %b %Y %H:%M:%S %z", localtime),
+    ));
+
+    $set->('Message-Id', sprintf (
+        q{<%s@%s.example.com>},
+        (join '', rand_chars(set => 'alphanumeric', size => 32)),
+        (join '', rand_chars(set => 'alphanumeric', size => 10)),
+    ));
+
+    $set->('MIME-Version', q{1.0});
+    $set->('Content-Transfer-Encoding', q{8bit});
+
+    if ( $self->{html} ) {
+        $set->('Content-Type', q{text/html; charset="us-ascii"});
+    }
+    else {
+        $set->('Content-Type', q{text/plain; charset="us-ascii"});
+    }
+
+    return $h;
 }
 
-sub _generate_mail_headers {
-    my $self        = shift;
-    my $Rl_hdrorder = shift;
-    my $Rh_header   = shift;
+sub _generate_body {
+    my ($self) = @_;
 
-    my @hdrorder = qw(
-      Received
-      Message-ID
-      From
-      To
-      Subject
-      Date
-      MIME-Version
-      Content-Type
-      Content-Transfer-Encoding
+    my @lines;
+
+    if ( $self->{text} ) {
+        @lines = (
+            (map { "$_: $self->{metadata}{$_}" } sort keys %{$self->{metadata}}),
+            (keys %{$self->{metadata}} ? q{} : ()),
+            $self->{text},
+        );
+    }
+
+    elsif ( $self->{html} ) {
+        @lines = (
+            q{<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">},
+            q{<html><head><title>Anazlyzed comment</title></head><body>},
+            $self->{html},
+            q{</body></html>},
+        );
+    }
+
+    return join "\n", @lines;
+}
+
+sub _generate_message {
+    my ($self) = @_;
+
+    my $msg = Mail::Internet->new(
+        Header => $self->_generate_header,
+        Body   => [$self->_generate_body],
     );
-    push @{$Rl_hdrorder}, @hdrorder;
 
-    $Rh_header->{'To'} ||= $self->{'header'}{'recipient_address'}
-      || 'blog@example.com';
-
-    $Rh_header->{'Date'} = strftime("%a, %d %b %Y %H:%M:%S %z", localtime);
-
-    $Rh_header->{'From'} = Mail::Address->new(
-             $self->{'metadata'}{'author'}
-          || $self->{'header'}{'sender_name'}
-          || 'Anonymous Coward',
-
-        $self->{'metadata'}{'email'}
-          || $self->{'header'}{'sender_address'}
-          || 'nobody@example.com',
-    )->format;
-
- #    if (exists($self->{'metadata'}{'subject'})
- #        && defined($self->{'metadata'}{'subject'})) {
- #        $Rh_header->{'Subject'} = $self->{'metadata'}{'subject'};
- #    } else {
- #        $Rh_header->{'Subject'} = $self->{'header'}{'Subject'} || 'Eponymous';
- #    }
-
-    $Rh_header->{'Subject'} = $self->{'metadata'}{'subject'}
-      || $self->{'header'}{'Subject'}
-      || 'Eponymous';
-
-    if (exists($self->{'metadata'}{'url'})
-        && defined($self->{'metadata'}{'url'})) {
-        my $fake_title =
-            'Title: <a href="'
-          . $self->{'metadata'}{'url'} . '">'
-          . $Rh_header->{'Subject'}
-          . "</a>\n";
-    }
-
-    $self->{'metadata'}{'ip'} = $self->{'header'}{'sender_ip'}
-      unless (exists($self->{'metadata'}{'ip'})
-        && defined($self->{'metadata'}{'ip'}));
-
-    $Rh_header->{'Received'} = 'from '
-      . $self->{'metadata'}{'ip'} . ' (['
-      . $self->{'metadata'}{'ip'}
-      . ']) by '
-      . ($self->{'header'}{'recipient_host'}        || 'localhost') . ' '
-      . ($self->{'header'}{'recipient_mta_version'} || '(Postfix)')
-      . ' with SMTP id '
-      . $self->_rndhex(10)
-      . ' for <'
-      . $Rh_header->{'To'} . '>; '
-      . $Rh_header->{'Date'};
-
-    $Rh_header->{'Message-ID'} = '<'
-      . $self->_rndhex(12) . '$'
-      . $self->_rndhex(8) . '$'
-      . $self->_rndhex(8) . '@'
-      . ($self->{'header'}{'sender_host'} || 'blog.example.com') . '>';
-
-    $Rh_header->{'MIME-Version'}              = '1.0';
-    $Rh_header->{'Content-Type'}              = 'text/html; charset="us-ascii"';
-    $Rh_header->{'Content-Transfer-Encoding'} = '8bit';
-
-    my $Rl_tmphdr = [];
-    foreach my $hdr (@hdrorder) {
-        if (exists($Rh_header->{$hdr}) && defined($Rh_header->{$hdr})) {
-            push @{$Rl_tmphdr}, $hdr . ': ' . $Rh_header->{$hdr};
-        }
-    }
-
-    return Mail::Header->new($Rl_tmphdr);
-
-    #	return;
-
-}
-
-sub _create_rfc822_message {
-    my $self = shift;
-
-    # Fake up some email headers
-    my @hdrorder = ();
-    my %header   = ();
-
-    #	$self->_generate_mail_headers(\@hdrorder, \%header, );
-    my $Rl_header = $self->_generate_mail_headers(\@hdrorder, \%header,);
-
-    my $Rl_body = [
-        '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">' . "\n",
-        '<HTML><HEAD><TITLE>Analyzed Comment</TITLE></HEAD><BODY>' . "\n",
-        @{$self->{'text'}},
-        '</BODY></HTML>' . "\n",
-    ];
-
-    $self->{'_rfc822_message'} =
-      Mail::Internet->new('Header' => $Rl_header, 'Body' => $Rl_body);
-
-    # Fake up a mail message and stuff the text in the body
     if ($Mail::SpamAssassin::VERSION < 3) {
-
-        # This is totally stupid. M::SA::NMA goes all stupid if [data] isn't
-        # broken into lines.
-        $self->{'_mail'} =
-          Mail::SpamAssassin::NoMailAudit->new(
-            'data' => [split(/\n/, $self->{'_rfc822_message'}->as_string)]);
-    } else {
-        $self->{'_mail'} =
-          Mail::SpamAssassin::Message->new(
-            {'message' => $self->{'_rfc822_message'}->as_string});
+        return Mail::SpamAssassin::NoMailAudit->new(
+            data => [ split(/\n/, $msg->as_string) ],
+        );
     }
 
-    return;
+    return Mail::SpamAssassin::Message->new({
+        message => $msg->as_string,
+    });
 }
 
 1;
