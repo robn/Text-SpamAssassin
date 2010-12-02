@@ -4,108 +4,38 @@ use 5.006;
 use strict;
 use warnings;
 
-# internal modules (part of core perl distribution)
-use POSIX qw(strftime);
-
-# external modules (CPAN, etc.)
 use Mail::SpamAssassin;
-
 use Mail::Address;
 use Mail::Header;
 use Mail::Internet;
+use POSIX qw(strftime);
 
-if ($Mail::SpamAssassin::VERSION < 3) {
-    require Mail::SpamAssassin::NoMailAudit;
-
-    # } else {
-    #    require Mail::SpamAssassin::Message;
+BEGIN {
+    if ($Mail::SpamAssassin::VERSION < 3) {
+        require Mail::SpamAssassin::NoMailAudit;
+    }
 }
 
-require Exporter;
-
-our @ISA = qw(Exporter);
-
-# Items to export into callers namespace by default. Note: do not export
-# names by default without a very good reason. Use EXPORT_OK instead.
-# Do not simply export all your public functions/methods/constants.
-
-# This allows declaration	use Text::SpamAssassin ':all';
-# If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
-# will save memory.
-our %EXPORT_TAGS = (
-    'all' => [
-        qw(
-
-          )
-    ]
-);
-
-our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
-
-our @EXPORT = qw(
-
-);
-
-# our $VERSION = '0.01';
-(our $VERSION) = '$Revision: 1.2 $' =~ m#\$Revision:\s+(\S+)#o;
-
-# Preloaded methods go here.
-
-# Constructor
 sub new {
-    my $class = shift;
-    my %opts  = @_;
+    my ($class, %opts) = @_;
 
-    my $self = {
-        'text'               => [],
-        'response'           => {},
-        'metadata'           => {},
-        'spamassassin_prefs' => {},
-        'header'             => {},
-    };
+    my $self = bless {
+        text               => [],
+        spamassassin_prefs => {},
+    }, $class;
 
-    #		'option' => {},
-
-    bless $self, $class;
-
-    # initialize metadata, response, headers, email
-    $self->_init;
-
-    #	$self->{'option'} = {};
-
-#	$self->{'option'}{'sa_prefs'} = {};
-#	$self->{'option'}{'sa_prefs'}{'rules_filename'} = '/etc/spamassassin.rules';
-#	$self->{'option'}{'sa_prefs'}{'userprefs_filename'} = './comment_spam_prefs.cf';
+    $self->_reset_header;
+    $self->_reset_metadata;
+    $self->_reset_response;
 
     # process %opts and fill in option, text, and metadata structs
 
-    # Force data to be arrayref
-    my $data = $opts{data};
-
-    if (ref $data eq 'ARRAY') {
-        $self->{'text'} = $data;
-    } elsif (ref $data eq 'GLOB') {
-        if (defined fileno $data) {
-            $self->{'text'} = [<$data>];
-        }
-    } elsif (ref $data eq 'SCALAR') {
-        $self->{'text'} = [${$data}];
-    } else {
-        $self->{'text'} = [$data];
+    if (exists $opts{data} || exists $opts{text}) {
+        $self->set_text(exists $opts{data} ? $opts{data} : $opts{text});
     }
 
-  argloop:
     foreach my $kk (keys %opts) {
-        next argloop if ($kk eq 'text');
-        next argloop if ($kk eq 'data');
-
-        #		if ($kk eq 'option') {
-        #			if (ref $opts{$kk} eq 'HASH') {
-        #				foreach my $okk (keys %{$opts{$kk}}) {
-        #				}
-        #			}
-        #			next argloop;
-        #		}
+        next if ($kk eq 'data');
 
         if ($kk eq 'spamassassin_prefs') {
             if (ref $opts{$kk} eq 'HASH') {
@@ -113,15 +43,15 @@ sub new {
                     $self->set_spamassassin_prefs($okk, $opts{$kk}{$okk});
                 }
             }
-            next argloop;
+            next;
         }
 
         # treat all stray keys (not text, data, or option) as metadata
-        $self->{'metadata'}{$kk} = $opts{$kk};
+        $self->set_metadata($kk, $opts{$kk});
     }
 
     # Make a M::SA object; point to custom configs
-    $self->{'_analyzer'} = Mail::SpamAssassin->new($self->{'sa_prefs'});
+    $self->{'_analyzer'} = Mail::SpamAssassin->new($self->{'spamassassin_prefs'});
 
     return $self;
 }
@@ -130,7 +60,7 @@ sub analyze {
     my $self = shift;
 
     # wipe response
-    $self->_init_response;
+    $self->_reset_response;
 
     $self->_create_rfc822_message;
 
@@ -141,7 +71,7 @@ sub analyze {
 
     if ($status) {
         $self->{'response'}{'verdict'} =
-          ($status->is_spam()) ? "SUSPICIOUS" : "OK";
+            ($status->is_spam()) ? "SUSPICIOUS" : "OK";
         $self->{'response'}{'note'} = 'ANALYZED';  # add version number, timing?
         $self->{'response'}{'score'} = $status->get_hits();
         $self->{'response'}{'rules'} = $status->get_names_of_tests_hit();
@@ -158,13 +88,12 @@ sub analyze {
 }
 
 sub get_text {
-    my $self = shift;
+    my ($self) = @_;
     return join('', @{$self->{'text'}});
 }
 
 sub set_text {
-    my $self = shift;
-    my $data = shift;
+    my ($self, $data) = @_;
 
     if (ref $data eq 'ARRAY') {
         $self->{'text'} = $data;
@@ -246,87 +175,51 @@ sub _set_internals {
     return;
 }
 
-sub _init {
-    my $self = shift;
-
-    # initialize metadata
-    $self->_init_metadata;
-
-    # initialize response
-    $self->_init_response;
-
-    # initialize mail
-    $self->_init_mail;
-
-    # initialize mail header info
-    $self->_init_header;
-
-    return;
-}
-
-sub _init_mail {
-    my $self = shift;
-
-    # initialize mail
-    $self->{'mail'} = undef;
-
-    return;
-}
-
-sub _init_sa_prefs {
-    my $self = shift;
-
-    # initialize mail
-    $self->{'spamassassin_prefs'} = {};
-
-    return;
-}
-
-sub _init_header {
-    my $self = shift;
+sub _reset_header {
+    my ($self) = @_;
 
     # preload header defaults
     # These go into building Message-Id, Received, To, and From
-    $self->{'header'}{'sender_ip'}      = '127.0.0.1';
-    $self->{'header'}{'sender_name'}    = 'Anonymous Coward';
-    $self->{'header'}{'sender_address'} = 'nobody@example.com';
-    $self->{'header'}{'sender_host'}    = 'blog.example.com';
+    $self->{header} = {
+        sender_ip      => '127.0.0.1',
+        sender_name    => 'Anonymous Coward',
+        sender_address => 'nobody@example.com',
+        sender_host    => 'blog.example.com',
 
-    $self->{'header'}{'recipient_host'}        = 'localhost';
-    $self->{'header'}{'recipient_mta_version'} = '(Postfix)';
-    $self->{'header'}{'recipient_address'}     = 'blog@example.com';
+        recipient_host        => 'localhost',
+        recipient_mta_version => '(Postfix)',
+        recipient_addres      => 'blog@example.com',
 
-    $self->{'header'}{'Subject'}      = 'Eponymous';
-    $self->{'header'}{'MIME-Version'} = '1.0';
-    $self->{'header'}{'Content-Type'} = 'text/html; charset="us-ascii"';
-    $self->{'header'}{'Content-Transfer-Encoding'} = '8bit';
-
-    return;
+        Subject                     => 'Eponymous',
+        'MIME-Version'              => '1.0',
+        'Content-Type'              => 'text/html, charset="us-ascii"',
+        'Content-Transfer-Encoding' => '8bit',
+    };
 }
 
-sub _init_metadata {
-    my $self = shift;
+sub _reset_metadata {
+    my ($self) = @_;
 
     # preload metadata
-    $self->{'metadata'}{'author'}  = 'Anonymous Coward';
-    $self->{'metadata'}{'email'}   = 'sender@example.com';
-    $self->{'metadata'}{'ip'}      = '127.0.0.1';
-    $self->{'metadata'}{'subject'} = 'Eponymous';
-    $self->{'metadata'}{'url'}     = undef;
-
-    return;
+    $self->{metadata} = {
+        author  => 'Anonymous Coward',
+        email   => 'sender@example.com',
+        ip      => '127.0.0.1',
+        subject => 'Eponymous',
+        url     => undef,
+    };
 }
 
-sub _init_response {
-    my $self = shift;
+sub _reset_response {
+    my ($self) = @_;
 
     # preload response
-    $self->{'response'}{'verdict'} = 'OK';
-    $self->{'response'}{'note'}    = 'NOT ANALYZED';
-    $self->{'response'}{'rules'}   = '';
-    $self->{'response'}{'score'}   = 0;
-
-    return;
+    $self->{response} = {
+        verdict => 'OK',
+        note    => 'NOT ANALYZED',
+        rules   => '',
+        score   => 0,
+    };
 }
 
 sub _rndhex {
