@@ -125,7 +125,7 @@ sub analyze {
     return $result;
 }
 
-sub generate_header {
+sub _generate_header {
     my ($self) = @_;
 
     my $h = Mail::Header->new;
@@ -175,7 +175,7 @@ sub generate_header {
     return $h;
 }
 
-sub generate_body {
+sub _generate_body {
     my ($self) = @_;
 
     my @lines;
@@ -191,7 +191,9 @@ sub generate_body {
     elsif ( $self->{html} ) {
         @lines = (
             q{<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">},
-            q{<html><head><title>Anazlyzed comment</title></head><body>},
+            q{<html><head><title>Anazlyzed comment</title></head><body><ul>},
+            (map { "<li>$_: $self->{metadata}{$_}</li>" } sort keys %{$self->{metadata}}),
+            q{</ul>}
             $self->{html},
             q{</body></html>},
         );
@@ -264,7 +266,7 @@ A hashref. This will be passed as-is to the Mail::SpamAssassin constructor. At t
 
 =item lazy
 
-By default the Mail::SpamAssassin will be fully created in the Text::SpamAssassin constructor. This requires it to compile the rulesets and load any modules it needs which can take a little while. If the C<lazy> option is set to a true value, this setup will be deferred until the first scan is done.
+By default the Mail::SpamAssassin object will be fully created in the Text::SpamAssassin constructor. This requires it to compile the rulesets and load any modules it needs which can take a little while. If the C<lazy> option is set to a true value, this setup will be deferred until the first scan is done.
 
 =back
 
@@ -292,14 +294,95 @@ Set a header that will be added to the constructed message that gets passed to S
 
     $sa->set_metadata("ip", "127.0.0.1");
 
-Sets metadata related to the text, usually taken from additional fields in a blog comment form. Some of these values are used when constructing the message header for SpamAssassin.
+Sets metadata related to the text, usually taken from additional fields in a blog comment form. Some of these values are used when constructing the message header for SpamAssassin. When scanning text (but not HTML) this data will also be added to the message body so they can be scanned. Any additional data that you want scanned (such as URLs) should be added here.
+
+=head2 reset
+
+    $sa->reset;
+
+Calls C<reset_headers> and C<reset_headers> to reset the object state. You should use this if you have a long-lived Text::SpamAssassin object that will be used multiple times.
+
+=head2 reset_headers
+
+    $sa->reset_headers;
+
+Removes any headers previously set with C<set_header>.
+
+=head2 reset_metadata
+
+    $sa->reset_metadata;
+
+Removes any metadata previously set with C<set_metadata>.
 
 =head2 analyze
 
+    my $result = $sa->analyze;
 
+Scan the previously-supplied data. Returns a hashref containing three values:
 
+=over 4
 
+=item verdict
 
+One of the following values:
+
+=over 4
+
+=item OK
+
+The message was considered to be clean by SpamAssassin.
+
+=item SUSPICIOUS
+
+The message was considered to be spam by SpamAssassin.
+
+=item UNKNOWN
+
+The scan failed for an unknown reason.
+
+=back
+
+=item score
+
+The score that SpamAssassin gave the message.
+
+=item rules
+
+The list of rules that SpamAssassin matched when considering the message.
+
+=back
+
+=head1 MESSAGE GENERATION
+
+Because SpamAssassin only knows how to scan email messages, its necessary for Text::SpamAssassin to generate a message from the data you provide. This section details how that message is created.
+
+A message body is created from the supplied text or HTML data and the supplied metadata. If text is supplied then the message body contains the data supplied to C<set_metadata> as lines of "key: value", one per line, followed by the supplied message text. If HTML supplied then the body is wrapped in a HTML doctype and header, and the metadata is included as a unordered list.
+
+The header is mostly hardcoded, but the following metadata items will be included if present.
+
+=over 4
+
+=item author
+
+Included in the C<From:> header as the sender name.
+
+=item email
+
+Included in the C<From:> header as the sender address.
+
+=item subject
+
+Used as-is for the C<Subject:> header.
+
+=item ip
+
+Included in the C<Received:> header as the originating IP.
+
+=back
+
+Sane defaults will be used for any metadata that is not provided.
+
+Additionally, the C<Content-Type:> will be set to either C<text/plain> or C<text/html> depending on the type of message content provided.
 
 
 
