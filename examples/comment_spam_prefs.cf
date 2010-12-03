@@ -1,11 +1,14 @@
-###########################################################################
-# $Id: comment_spam_prefs.cf,v 1.1 2004/09/03 01:00:19 apthorpe Exp apthorpe $
-###########################################################################
+#
+# comment_spam_prefs.cf
+#
 # SpamAssassin user preferences file tuned for blog comment and wiki spam
 # See 'perldoc Mail::SpamAssassin::Conf' for details of what can be tweaked.
 # This has been tested with SpamAssassin 2.64 and still needs testing with
 # SA 3.x.
-###########################################################################
+#
+# This the original file that came with Text::SpamAssassin v1.2. It hasn't
+# been tested or updated for 2.0. Contributions are very welcome.
+#
 
 # How many hits before a mail is considered spam.
 required_hits	5
@@ -33,12 +36,6 @@ use_bayes		0
 # score UPPERCASE_75_100	0
 
 # Adjust the following scores as appropriate:
-
-# We could fake some headers into the Mail:SpamAssassin::NoMailAudit object
-# instead of zeroing these. This is probably more efficient.
-# score DATE_MISSING		0
-# score FROM_NO_LOWER		0
-# score RM_hm_EmtyMsgid		0
 
 # percent HTML - what should these be?
 score HTML_00_10		0
@@ -73,5 +70,3 @@ score DNS_FROM_RFCI_DSN		0
 score RCVD_IN_NJABL_DUL 0
 score RCVD_IN_SORBS_DUL 0
 score RCVD_IN_MAPS_DUL 0
-
-# __END__
