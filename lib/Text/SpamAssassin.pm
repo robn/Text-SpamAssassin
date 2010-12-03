@@ -83,18 +83,18 @@ sub set_header {
 }
 
 sub set_text {
-    my ($self, $text) = @_;
+    my ($self, @text) = @_;
 
-    $self->{text} = $text;
+    $self->{text} = join '', @text;
     delete $self->{html};
 
     return $self;
 }
 
 sub set_html {
-    my ($self, $html) = @_;
+    my ($self, @html) = @_;
 
-    $self->{html} = $html;
+    $self->{html} = join '', @html;
     delete $self->{text};
 
     return $self;
