@@ -23,7 +23,7 @@ sub new {
     my $self = bless {}, $class;
     $self->reset;
 
-    $self->{analyzer} = Mail::SpamAssassin->new(%{$opts{sa_options}});
+    $self->{analyzer} = Mail::SpamAssassin->new($opts{sa_options});
     $self->{analyzer}->compile_now if not $opts{lazy};
 
     return $self;
