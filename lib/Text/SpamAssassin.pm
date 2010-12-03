@@ -227,7 +227,7 @@ __END__
 
 =head1 NAME
 
-Text::SpamAssassin - Detects spamminess of arbitrary text, suitable for wiki and blog defense.
+Text::SpamAssassin - Detects spamminess of arbitrary text, suitable for wiki and blog defense
 
 =head1 SYNOPSIS
 
@@ -246,7 +246,7 @@ Text::SpamAssassin - Detects spamminess of arbitrary text, suitable for wiki and
 
 =head1 DESCRIPTION
 
-Text::SpamAssassin is a wrapper around Mail::SpamAssassin that makes it easy to check simple blocks of text or HTML for spam content. Its main purpose is to help integrate SpamAssassin into non-mail contexts like blog comments. It works by creating a minimal email message based on the text or HTML you pass it, then handing that email to SpamAssassin for analysis. See the C<analyze> method for more details.
+Text::SpamAssassin is a wrapper around Mail::SpamAssassin that makes it easy to check simple blocks of text or HTML for spam content. Its main purpose is to help integrate SpamAssassin into non-mail contexts like blog comments. It works by creating a minimal email message based on the text or HTML you pass it, then handing that email to SpamAssassin for analysis. See L<MESSAGE GENERATION> for more details.
 
 =head1 CONSTRUCTOR
 
@@ -262,7 +262,7 @@ As well as initializing the object the constructor creates a Mail::SpamAssassin 
 
 =item sa_options
 
-A hashref. This will be passed as-is to the Mail::SpamAssassin constructor. At the very least you probably want to provide the C<userprefs_filename> as the default configuration isn't particularly well suited to non-mail spam. See L<SPAMASSASSIN CONFIGRATION> for details.
+A hashref. This will be passed as-is to the Mail::SpamAssassin constructor. At the very least you probably want to provide the C<userprefs_filename> as the default configuration isn't particularly well suited to non-mail spam. See L<SPAMASSASSIN CONFIGURATION> for details.
 
 =item lazy
 
@@ -271,6 +271,13 @@ By default the Mail::SpamAssassin object will be fully created in the Text::Spam
 =back
 
 =head1 METHODS
+
+All the C<set_*> and C<reset_*> methods return a copy of Text::SpamAssasin object they are invoked on to allow easy call chaining:
+
+    my $result = $sa->reset
+                    ->set_text("comments")
+                    ->set_metadata("ip", "127.0.0.1");
+                    ->analyze;
 
 =head2 set_text
 
@@ -384,104 +391,33 @@ Sane defaults will be used for any metadata that is not provided.
 
 Additionally, the C<Content-Type:> will be set to either C<text/plain> or C<text/html> depending on the type of message content provided.
 
+=head1 SPAMASSASSIN CONFIGURATION
 
+By default SpamAssassin is configured in a way that does a good job of detecting spam in email traffic. Many of its rules that work well in that context are unsuitable for use in other scenarios. An example of this is DUN/DUL rulesets that check for known "dial-up" IP networks (such as those used by ISP customers) are almost always useless for something that scans blog comments, as you likely want home users to be able to comment on our blog when you'd never dream of accepting mail from them directly.
 
-=head1 ABSTRACT
-
-Text::SpamAssassin accepts text and metadata (comment title, poster's name, email address, url, and IP address), and produces a RFC822-formatted mail message for analysis with Mail::SpamAssassin. Additionally, new rulesets and user preferences can be passed to Mail::SpamAssassin to adjust the rules and scores applied to the mail message, since certain tests bear no relevance to comment spam (e.g. DUL network tests)
-
-Results include verdict (OK or SUSPICIOUS), note (shows whether tests completed successfully), score, and rules (the list of rules hit.)
-
-=head1 DESCRIPTION
-
-I should describe the constructor here, how it takes a hash of arguments, including:
-
-    # the actual text to be analyzed, as a reference to a list of lines
-    'data'   => \@comment,
-
-    # a hash of SpamAssassin preferences (see Mail::SpamAssassin::Conf)
-    'spamassassin_prefs' => \%sa_prefs,
-
-    # a hash of RFC822 mail header elements
-    'header' => \%header,
-
-where the defaults are:
-
- %header = (
-   'sender_ip'                 => '127.0.0.1',
-   'sender_name'               => 'Anonymous Coward',
-   'sender_address'            => 'nobody@example.com',
-   'sender_host'               => 'blog.example.com',
-   
-   'recipient_host'            => 'localhost',
-   'recipient_mta_version'     => '(Postfix)',
-   'recipient_address'         => 'blog@example.com',
-   
-   'Subject'                   => 'Eponymous',
-   'MIME-Version'              => '1.0',
-   'Content-Type'              => 'text/html; charset="us-ascii"',
-   'Content-Transfer-Encoding' => '8bit',
- )
-
-The remainder of the elements are treated as metadata. The only metadata that are really relevant are 'email', 'subject', 'ip', 'url', and 'author'. The remainder will be added to the message body, but only those five fields are used when constructing the faux email headers.
-
-Note that metadata trumps %header when constructing the mail headers with some hardcoded defaults lingering if you manage to totally mangle anything. Consider this to be enough rope with which to hang yourself.
-
-There are get and set accessors for text, spamassassin_prefs, and metadata (set_text([ 'mumble content mumble']), set_spamassassin_prefs('userprefs_filename', '/home/blog/sa.cf'), and set_metadata('ip', $ip); get_... accessors work as you might expect. get_response('field') works too, where 'field' is one of 'verdict', 'note', 'score', 'and rules'. 'rules' may be empty.
-
-Basically, you build the Text::SpamAssassin object, load it with data, invoke the analyze() method (which returns a hash reference with the four keys as mentioned above), and use the returned hash reference or access methods to determine whether the text is spammy-looking. If the analyzer runs into trouble, it sets 'verdict' to 'OK', under the assumption that it's better to leak some spam through than delay (or delete) legitimate posts.
-
-=head2 EXPORT
-
-None by default.
+For this reason, its highly recommended that you specify an alternate configuration using the C<userprefs_filename> option in C<sa_options>. Sample configuration files can be found in the C<examples> directory of the C<Text-SpamAssassin> distribution.
 
 =head1 BUGS
 
-=over 4
+None known. Please report bugs via the CPAN Request Tracker at L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Text-SpamAssassin>
 
-=item * Test suite is virtually non-existant. Needs more torture.
+=head1 FEEDBACK
 
-=item * I'm not an OO programmer so there's bound to be metric buttloads of problems with my design (my UML books are used to shore up the short leg of the coffee table, and I use my copies of Riel's "Object-Oriented Design Heuristics" and The Gang of Four's "Design Patterns" to press flowers.) Seriously though, this was refactored from procedural code so it doubtless has a few warts and quirks.
+If you find this module useful, please consider rating it on the CPAN Ratings
+service at L<http://cpanratings.perl.org/rate?distribution=Text-SpamAssassin>.
 
-=item * The documentation appears to have been written by a drunkard.
-
-=item * "These rubber pants are hot." - Ralph Wiggum
-
-=back
-
-=head1 TO DO
-
-=over 4
-
-=item * Find and fix bugs.
-
-=item * Clean up OO design.
-
-=item * Look for ways to speed this up (contribute babycartd?)
-
-=item * Give users better control over comment's mail headers. One could subclass the module and replace the offensive innards of _generate_mail_headers() and _create_rfc822_message() but one probably shouldn't have to. The current attempt at making header information accessible is messy.
-
-=item * Give users more control over failure status, e.g. treat unanalyzed messages be marked SUSPICIOUS rather than OK. You can detect negative and 'administratively negative' now so this isn't a big issue.
-
-=item * Build a decent comment_spam_prefs.cf file.
-
-=item * Verify SpamAssassin 3.x compatibility.
-
-=item * Add more gratuitous references to Zatoichi the Blind Swordsman and Ogami Itto from Lone Wolf & Cub. gara, gara, gara...
-
-=back
+If you like (or hate) this module, please tell the author! Send mail to
+E<lt>rob@eatenbyagrue.orgE<gt>.
 
 =head1 SEE ALSO
 
-Mail::SpamAssassin
+L<Mail::SpamAssassin>
 
-http://www.surbl.org
-
-http://www.austinimprov.com/~apthorpe/code/babycart
+L<http://apthorpe.cynistar.net/code/babycart/>
 
 =head1 AUTHOR
 
-Originally by Bob Apthorpe, E<lt>apthorpe+babycart@cynistar.netE<gt>
+Originally by Bob Apthorpe E<lt>apthorpe+babycart@cynistar.netE<gt>
 
 Cleanup for 2.0 and CPAN release by Robert Norris E<lt>rob@eatenbyagrue.orgE<gt>
 
