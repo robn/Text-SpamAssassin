@@ -193,7 +193,7 @@ sub _generate_body {
             q{<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">},
             q{<html><head><title>Anazlyzed comment</title></head><body><ul>},
             (map { "<li>$_: $self->{metadata}{$_}</li>" } sort keys %{$self->{metadata}}),
-            q{</ul>}
+            q{</ul>},
             $self->{html},
             q{</body></html>},
         );
