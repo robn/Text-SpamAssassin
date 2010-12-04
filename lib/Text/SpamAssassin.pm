@@ -29,6 +29,13 @@ sub new {
     return $self;
 }
 
+sub DESTROY {
+    my ($self) = @_;
+
+    local $@;
+    eval { $self->{analyzer}->finish };
+}
+
 sub reset {
     my ($self) = @_;
 
@@ -104,8 +111,9 @@ sub analyze {
     my ($self) = @_;
 
     my $msg = $self->_generate_message;
-
     my $status = $self->{analyzer}->check($msg);
+    $msg->finish;
+
     if (! $status) {
         return {
             verdict => 'UNKNOWN',

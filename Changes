@@ -1,5 +1,7 @@
 {{$NEXT}}
 
+    * Make sure Mail::SpamAssassin objects get properly cleaned up (Robert Norris)
+
 2.000     Dec 03 2010
 
     * Major refactor and update from 1.2 for CPAN release (Robert Norris)
