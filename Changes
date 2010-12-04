@@ -1,5 +1,7 @@
 {{$NEXT}}
 
+2.001     Dec 04 2010
+
     * Make sure Mail::SpamAssassin objects get properly cleaned up (Robert Norris)
 
 2.000     Dec 03 2010
